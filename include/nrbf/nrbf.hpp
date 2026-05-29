@@ -99,6 +99,8 @@ public:
     }
 
     // ── Standalone string object (BinaryObjectString) ─────────────────────
+    // `s` views the parse input; valid while the input outlives the
+    // visitor. Copy any string that must outlive the parse.
     virtual void string_object(int32_t object_id, std::string_view s) {
         (void)object_id; (void)s;
     }

@@ -4,6 +4,7 @@
 // Sections cited in comments below refer to that spec.
 
 #include "nrbf/nrbf.hpp"
+#include "nrbf/profile.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -65,24 +66,34 @@ public:
     }
 
     // MS-NRBP 2.1.1.6 LengthPrefixedString - up to 5-byte 7-bit-varint length.
-    std::string lpstr() {
+    uint32_t lpstr_len() {
         uint32_t len = 0;
         int shift = 0;
         for (int i = 0; i < 5; ++i) {
             uint8_t b = u8();
             len |= uint32_t(b & 0x7F) << shift;
-            if ((b & 0x80) == 0) {
-                std::string s;
-                if (len > 0) {
-                    need(len);
-                    s.assign(reinterpret_cast<const char*>(data + p_), len);
-                    p_ += len;
-                }
-                return s;
-            }
+            if ((b & 0x80) == 0) return len;
             shift += 7;
         }
         throw ParseError("Malformed length prefix");
+    }
+
+    std::string lpstr() {
+        uint32_t len = lpstr_len();
+        std::string s;
+        if (len > 0) {
+            need(len);
+            s.assign(reinterpret_cast<const char*>(data + p_), len);
+            p_ += len;
+        }
+        return s;
+    }
+
+    // View of the next LengthPrefixedString into the input bytes; no copy.
+    std::string_view lpstr_view() {
+        uint32_t len = lpstr_len();
+        if (len == 0) return {};
+        return view(len);
     }
 
     std::string_view view(size_t n) {
@@ -340,13 +351,13 @@ private:
         switch (rt) {
         case 6: { // BinaryObjectString
             int32_t id = r_.i32();
-            std::string s = r_.lpstr();
+            std::string_view sv = r_.lpstr_view();
             if (report) {
                 v.kind = Value::Kind::ObjectRef;
                 v.object_id = id;
-                v.s = s;
+                v.s.assign(sv);
                 v_.member(m, v);
-                v_.string_object(id, v.s);
+                v_.string_object(id, sv);
             }
             break;
         }
@@ -408,7 +419,7 @@ private:
 
     void read_binary_object_string(bool report) {
         int32_t id = r_.i32();
-        std::string s = r_.lpstr();
+        std::string_view s = r_.lpstr_view();
         if (report) v_.string_object(id, s);
     }
 
@@ -738,6 +749,7 @@ private:
 }  // namespace
 
 void parse(std::string_view bytes, Visitor& v) {
+    NRBF_ZONE_N("nrbf::parse");
     if (bytes.empty()) throw ParseError("Empty NRBF stream");
     Parser p(reinterpret_cast<const uint8_t*>(bytes.data()),
              bytes.size(), v);
