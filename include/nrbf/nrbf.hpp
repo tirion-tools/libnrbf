@@ -139,6 +139,80 @@ public:
     }
 };
 
+// Fan-out composition: one parse feeds every registered child, so callers
+// avoid re-parsing a stream per consumer. enter_* returns the OR of the
+// children's returns, so the parser descends if any child wants to.
+// Adding a Visitor virtual needs a matching override here; test_multi guards it.
+class MultiVisitor final : public Visitor {
+public:
+    void add(Visitor& v) { children_.push_back(&v); }
+
+    void library(int32_t library_id, std::string_view name) override {
+        for (auto* c : children_) c->library(library_id, name);
+    }
+
+    bool enter_instance(int32_t object_id, const ClassDef& def) override {
+        bool any = false;
+        for (auto* c : children_)
+            if (c->enter_instance(object_id, def)) any = true;
+        return any;
+    }
+    void member(const ClassMember& m, const Value& v) override {
+        for (auto* c : children_) c->member(m, v);
+    }
+    void exit_instance(int32_t object_id, const ClassDef& def) override {
+        for (auto* c : children_) c->exit_instance(object_id, def);
+    }
+
+    void string_object(int32_t object_id, std::string_view s) override {
+        for (auto* c : children_) c->string_object(object_id, s);
+    }
+    void primitive(PrimitiveType pt, const Value& v) override {
+        for (auto* c : children_) c->primitive(pt, v);
+    }
+
+    bool enter_primitive_array(int32_t object_id,
+                               PrimitiveType pt,
+                               int32_t length) override {
+        bool any = false;
+        for (auto* c : children_)
+            if (c->enter_primitive_array(object_id, pt, length)) any = true;
+        return any;
+    }
+    void primitive_array_value(int32_t index, const Value& v) override {
+        for (auto* c : children_) c->primitive_array_value(index, v);
+    }
+    void exit_primitive_array(int32_t object_id) override {
+        for (auto* c : children_) c->exit_primitive_array(object_id);
+    }
+
+    bool enter_object_array(int32_t object_id, int32_t length) override {
+        bool any = false;
+        for (auto* c : children_)
+            if (c->enter_object_array(object_id, length)) any = true;
+        return any;
+    }
+    void exit_object_array(int32_t object_id) override {
+        for (auto* c : children_) c->exit_object_array(object_id);
+    }
+
+    bool enter_string_array(int32_t object_id, int32_t length) override {
+        bool any = false;
+        for (auto* c : children_)
+            if (c->enter_string_array(object_id, length)) any = true;
+        return any;
+    }
+    void string_array_value(int32_t index, std::string_view s) override {
+        for (auto* c : children_) c->string_array_value(index, s);
+    }
+    void exit_string_array(int32_t object_id) override {
+        for (auto* c : children_) c->exit_string_array(object_id);
+    }
+
+private:
+    std::vector<Visitor*> children_;
+};
+
 // Parse an NRBF stream, invoking `v` for every record. Throws ParseError
 // on malformed input.
 void parse(std::string_view bytes, Visitor& v);

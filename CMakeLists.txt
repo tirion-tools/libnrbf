@@ -33,6 +33,10 @@ if(NRBF_BUILD_TESTS)
     enable_testing()
     add_executable(nrbf_dump tests/test_dump.cpp)
     target_link_libraries(nrbf_dump PRIVATE nrbf)
+
+    add_executable(test_multi tests/test_multi.cpp)
+    target_link_libraries(test_multi PRIVATE nrbf)
+    add_test(NAME multi_visitor COMMAND test_multi)
 endif()
 
 if(NRBF_INSTALL)
